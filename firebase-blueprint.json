@@ -1,0 +1,157 @@
+{
+  "entities": {
+    "Buku": {
+      "title": "Buku",
+      "description": "Data item buku pada katalog perpustakaan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nomorBuku": { "type": "string" },
+        "isbn": { "type": "string" },
+        "judul": { "type": "string" },
+        "pengarang": { "type": "string" },
+        "penerbit": { "type": "string" },
+        "tahunTerbit": { "type": "number" },
+        "kategori": { "type": "string" },
+        "mataPelajaran": { "type": "string" },
+        "tingkatKelas": { "type": "string" },
+        "kurikulum": { "type": "string" },
+        "semester": { "type": "string" },
+        "jumlahTotal": { "type": "number" },
+        "jumlahTersedia": { "type": "number" },
+        "lokasiRak": { "type": "string" },
+        "sinopsis": { "type": "string" },
+        "coverWarna": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "nomorBuku", "judul", "pengarang", "penerbit", "jumlahTotal", "jumlahTersedia"]
+    },
+    "Anggota": {
+      "title": "Anggota",
+      "description": "Data anggota siswa atau guru/staf perpustakaan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nomorAnggota": { "type": "string" },
+        "nama": { "type": "string" },
+        "jenisAnggota": { "type": "string" },
+        "kelasId": { "type": "string" },
+        "jenisKelamin": { "type": "string" },
+        "tempatLahir": { "type": "string" },
+        "tanggalLahir": { "type": "string" },
+        "telepon": { "type": "string" },
+        "alamat": { "type": "string" },
+        "tanggalBergabung": { "type": "string" },
+        "status": { "type": "string" },
+        "fotoUrl": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "nomorAnggota", "nama", "jenisAnggota", "kelasId", "jenisKelamin", "status"]
+    },
+    "Kelas": {
+      "title": "Kelas",
+      "description": "Data rombel kelas di SMPN 3 Reteh",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "namaKelas": { "type": "string" },
+        "tingkat": { "type": "string" },
+        "waliKelas": { "type": "string" },
+        "ruangan": { "type": "string" },
+        "keterangan": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "namaKelas", "tingkat", "waliKelas"]
+    },
+    "Transaksi": {
+      "title": "Transaksi",
+      "description": "Data sirkulasi peminjaman dan pengembalian buku",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kodeTransaksi": { "type": "string" },
+        "anggotaId": { "type": "string" },
+        "bukuId": { "type": "string" },
+        "tanggalPinjam": { "type": "string" },
+        "tanggalJatuhTempo": { "type": "string" },
+        "tanggalKembali": { "type": "string" },
+        "status": { "type": "string" },
+        "denda": { "type": "number" },
+        "statusDenda": { "type": "string" },
+        "kondisiBukuSaatKembali": { "type": "string" },
+        "catatan": { "type": "string" },
+        "petugas": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "kodeTransaksi", "anggotaId", "bukuId", "tanggalPinjam", "tanggalJatuhTempo", "status"]
+    },
+    "Pengaturan": {
+      "title": "Pengaturan",
+      "description": "Profil sekolah dan kebijakan sirkulasi",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "namaSekolah": { "type": "string" },
+        "npsn": { "type": "string" },
+        "alamat": { "type": "string" },
+        "desaKelurahan": { "type": "string" },
+        "kecamatan": { "type": "string" },
+        "kabupaten": { "type": "string" },
+        "provinsi": { "type": "string" },
+        "kodePos": { "type": "string" },
+        "telepon": { "type": "string" },
+        "email": { "type": "string" },
+        "website": { "type": "string" },
+        "namaKepalaSekolah": { "type": "string" },
+        "nipKepalaSekolah": { "type": "string" },
+        "namaKepalaPerpustakaan": { "type": "string" },
+        "nipKepalaPerpustakaan": { "type": "string" },
+        "logoKopUrl": { "type": "string" },
+        "posisiLogoKop": { "type": "string" },
+        "maksimalHariPinjam": { "type": "number" },
+        "dendaPerHari": { "type": "number" },
+        "maksimalBukuPinjam": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["namaSekolah", "maksimalHariPinjam", "dendaPerHari", "maksimalBukuPinjam"]
+    },
+    "SyncMeta": {
+      "title": "SyncMeta",
+      "description": "Metadata sinkronisasi otomatis multi-platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "lastSyncedAt": { "type": "string" },
+        "version": { "type": "number" },
+        "deviceInfo": { "type": "string" }
+      },
+      "required": ["lastSyncedAt", "version"]
+    }
+  },
+  "firestore": {
+    "/buku/{bukuId}": {
+      "schema": "Buku",
+      "description": "Koleksi katalog buku perpustakaan SMPN 3 Reteh"
+    },
+    "/anggota/{anggotaId}": {
+      "schema": "Anggota",
+      "description": "Koleksi data anggota siswa dan guru/staf perpustakaan"
+    },
+    "/kelas/{kelasId}": {
+      "schema": "Kelas",
+      "description": "Daftar kelas di SMPN 3 Reteh"
+    },
+    "/transaksi/{transaksiId}": {
+      "schema": "Transaksi",
+      "description": "Sirkulasi peminjaman dan pengembalian buku"
+    },
+    "/pengaturan/{settingId}": {
+      "schema": "Pengaturan",
+      "description": "Pengaturan profil sekolah dan kebijakan perpustakaan"
+    },
+    "/sync_metadata/{metaId}": {
+      "schema": "SyncMeta",
+      "description": "Metadata waktu sinkronisasi otomatis antar platform"
+    }
+  }
+}

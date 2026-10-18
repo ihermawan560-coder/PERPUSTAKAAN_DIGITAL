@@ -1,0 +1,6 @@
+{
+  "name": "Perpustakaan Digital SMP Negeri 3 Reteh",
+  "description": "Sistem Informasi Manajemen Perpustakaan Digital SMP Negeri 3 Reteh - Pengelolaan data buku, anggota, kelas, transaksi peminjaman, cetak kartu anggota dan laporan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
