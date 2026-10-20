@@ -44,10 +44,35 @@ export const PengaturanView: React.FC = () => {
   const [logoTab, setLogoTab] = useState<'preset' | 'upload' | 'url'>('preset');
   const [urlInput, setUrlInput] = useState('');
 
+  // Admin Password Management
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updatePengaturan(formData);
-    addToast('Pengaturan sekolah dan logo kop surat berhasil disimpan!', 'success');
+
+    const dataToSave = { ...formData };
+    if (newPassword.trim()) {
+      if (newPassword.trim().length < 6) {
+        addToast('Kata sandi administrator baru harus minimal 6 karakter demi keamanan!', 'error');
+        return;
+      }
+      if (newPassword.trim() !== confirmPassword.trim()) {
+        addToast('Konfirmasi kata sandi tidak sesuai dengan sandi baru!', 'error');
+        return;
+      }
+      dataToSave.adminPassword = newPassword.trim();
+    }
+
+    updatePengaturan(dataToSave);
+    if (newPassword.trim()) {
+      setNewPassword('');
+      setConfirmPassword('');
+      addToast('Pengaturan dan kata sandi baru administrator berhasil disimpan!', 'success');
+    } else {
+      addToast('Pengaturan sekolah dan logo kop surat berhasil disimpan!', 'success');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -702,6 +727,60 @@ export const PengaturanView: React.FC = () => {
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Section: Keamanan & Kredensial Administrator */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+            <Key className="w-4 h-4 text-rose-600" />
+            <h3 className="text-sm font-bold text-slate-900">
+              Keamanan Akses & Kata Sandi Administrator
+            </h3>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              Kata sandi standar sistem adalah <strong>admin</strong>. Anda dapat menetapkan kata sandi baru untuk mencegah akses tidak sah ke dashboard perpustakaan sekolah. Kosongkan kolom jika tidak ingin mengubah kata sandi.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Kata Sandi Baru Administrator (Opsional)
+              </label>
+              <div className="relative">
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Minimal 6 karakter"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Ulangi Kata Sandi Baru
+              </label>
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Ketik ulang kata sandi baru"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
 
           <div className="flex justify-end pt-2">
             <button
@@ -709,7 +788,7 @@ export const PengaturanView: React.FC = () => {
               className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition-all flex items-center gap-2"
             >
               <Save className="w-4 h-4" />
-              <span>Simpan Seluruh Pengaturan</span>
+              <span>Simpan Seluruh Pengaturan & Kata Sandi</span>
             </button>
           </div>
         </div>

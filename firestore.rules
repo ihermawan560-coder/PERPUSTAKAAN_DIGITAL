@@ -1,50 +1,102 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny all
+    // Global Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // Reusable Validation Primitives
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128;
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Buku collection
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidBuku(data) {
+      return data.id is string &&
+        data.judul is string && data.judul.size() > 0 && data.judul.size() <= 300 &&
+        data.nomorBuku is string && data.nomorBuku.size() <= 100 &&
+        data.jumlahTotal is number && data.jumlahTotal >= 0 &&
+        data.jumlahTersedia is number && data.jumlahTersedia >= 0;
+    }
+
+    function isValidAnggota(data) {
+      return data.id is string &&
+        data.nama is string && data.nama.size() > 0 && data.nama.size() <= 200 &&
+        data.nomorAnggota is string && data.nomorAnggota.size() > 0 && data.nomorAnggota.size() <= 100 &&
+        data.kelasId is string && data.kelasId.size() <= 100 &&
+        data.status is string;
+    }
+
+    function isValidKelas(data) {
+      return data.id is string &&
+        data.namaKelas is string && data.namaKelas.size() > 0 && data.namaKelas.size() <= 100 &&
+        data.tingkat is string;
+    }
+
+    function isValidTransaksi(data) {
+      return data.id is string &&
+        data.kodeTransaksi is string && data.kodeTransaksi.size() > 0 &&
+        data.anggotaId is string && data.anggotaId.size() > 0 &&
+        data.bukuId is string && data.bukuId.size() > 0 &&
+        data.tanggalPinjam is string && data.tanggalPinjam.size() <= 30 &&
+        data.tanggalJatuhTempo is string && data.tanggalJatuhTempo.size() <= 30 &&
+        data.status is string;
+    }
+
+    function isValidPengaturan(data) {
+      return data.namaSekolah is string && data.namaSekolah.size() > 0 && data.namaSekolah.size() <= 200 &&
+        data.maksimalHariPinjam is number && data.maksimalHariPinjam >= 1 &&
+        data.dendaPerHari is number && data.dendaPerHari >= 0;
+    }
+
+    function isValidSyncMeta(data) {
+      return data.lastSyncedAt is string && data.lastSyncedAt.size() <= 50;
+    }
+
+    // Buku Collection
     match /buku/{bukuId} {
       allow read: if isValidId(bukuId);
-      allow write: if isValidId(bukuId);
+      allow create, update: if isValidId(bukuId) && isValidBuku(incoming());
+      allow delete: if isValidId(bukuId);
     }
 
-    // Anggota collection
+    // Anggota Collection
     match /anggota/{anggotaId} {
       allow read: if isValidId(anggotaId);
-      allow write: if isValidId(anggotaId);
+      allow create, update: if isValidId(anggotaId) && isValidAnggota(incoming());
+      allow delete: if isValidId(anggotaId);
     }
 
-    // Kelas collection
+    // Kelas Collection
     match /kelas/{kelasId} {
       allow read: if isValidId(kelasId);
-      allow write: if isValidId(kelasId);
+      allow create, update: if isValidId(kelasId) && isValidKelas(incoming());
+      allow delete: if isValidId(kelasId);
     }
 
-    // Transaksi collection
+    // Transaksi Collection
     match /transaksi/{transaksiId} {
       allow read: if isValidId(transaksiId);
-      allow write: if isValidId(transaksiId);
+      allow create, update: if isValidId(transaksiId) && isValidTransaksi(incoming());
+      allow delete: if isValidId(transaksiId);
     }
 
-    // Pengaturan collection
+    // Pengaturan Collection
     match /pengaturan/{settingId} {
       allow read: if isValidId(settingId);
-      allow write: if isValidId(settingId);
+      allow create, update: if isValidId(settingId) && isValidPengaturan(incoming());
+      allow delete: if false; // Deny deleting school configuration
     }
 
-    // Sync metadata collection
+    // Sync Metadata Collection
     match /sync_metadata/{metaId} {
       allow read: if isValidId(metaId);
-      allow write: if isValidId(metaId);
+      allow create, update: if isValidId(metaId) && isValidSyncMeta(incoming());
+      allow delete: if false;
     }
   }
 }

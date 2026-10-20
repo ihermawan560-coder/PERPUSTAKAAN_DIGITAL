@@ -22,6 +22,24 @@ export interface SpreadsheetDetails {
 }
 
 /**
+ * Neutralize CSV & Spreadsheet Formula Injection
+ * Prepends an apostrophe if string starts with formula tokens (=, +, -, @, \t, \r)
+ */
+export function sanitizeForSheet(val: any): any {
+  if (typeof val !== 'string') return val;
+  const trimmed = val.trim();
+  if (!trimmed) return '';
+  if (/^[=+\-@\t\r]/.test(trimmed)) {
+    return `'${trimmed}`;
+  }
+  return trimmed;
+}
+
+export function sanitizeRowForSheet(row: any[]): any[] {
+  return row.map((cell) => sanitizeForSheet(cell));
+}
+
+/**
  * Helper to execute an authenticated request with the cached Google access token
  */
 async function authorizedFetch(url: string, options: RequestInit = {}): Promise<Response> {
@@ -36,11 +54,24 @@ async function authorizedFetch(url: string, options: RequestInit = {}): Promise<
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(url, { ...options, headers });
-  if (res.status === 401) {
-    throw new Error('Sesi autentikasi Google telah berakhir. Silakan masuk kembali dengan Google.');
+  // Abort controller for timeout resilience (15s timeout)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const res = await fetch(url, { ...options, headers, signal: controller.signal });
+    if (res.status === 401) {
+      throw new Error('Sesi autentikasi Google telah berakhir. Silakan masuk kembali dengan Google.');
+    }
+    return res;
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Permintaan ke Google API mengalami batas waktu (timeout). Periksa koneksi internet Anda.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return res;
 }
 
 /**
@@ -331,26 +362,26 @@ export async function exportAllDataToSpreadsheet(
     ]);
   });
 
-  // Batch write values
+  // Batch write values with neutralized formulas (anti-injection)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
   const body = {
     valueInputOption: 'USER_ENTERED',
     data: [
       {
         range: "'Data Siswa & Anggota'!A1:L",
-        values: anggotaRows,
+        values: anggotaRows.map(sanitizeRowForSheet),
       },
       {
         range: "'Katalog Buku'!A1:N",
-        values: bukuRows,
+        values: bukuRows.map(sanitizeRowForSheet),
       },
       {
         range: "'Sirkulasi Transaksi'!A1:L",
-        values: transaksiRows,
+        values: transaksiRows.map(sanitizeRowForSheet),
       },
       {
         range: "'Daftar Kelas'!A1:G",
-        values: kelasRows,
+        values: kelasRows.map(sanitizeRowForSheet),
       },
     ],
   };
@@ -486,16 +517,22 @@ export function parseStudentsFromSheetValues(
       jenisKelamin = 'Perempuan';
     }
 
+    const cleanText = (val: string, max = 150) =>
+      (val || '').toString().trim().replace(/<[^>]*>?/gm, '').slice(0, max);
+
+    const safeNama = cleanText(rawNama, 100);
+    if (!safeNama) return;
+
     parsed.push({
-      nomorAnggota: rawNisn || `008${Date.now().toString().slice(-7)}${rowIdx}`,
-      nama: rawNama,
+      nomorAnggota: cleanText(rawNisn, 50) || `008${Date.now().toString().slice(-7)}${rowIdx}`,
+      nama: safeNama,
       jenisAnggota: matchedKelasId === 'k-guru' ? 'Guru' : 'Siswa',
       kelasId: matchedKelasId,
       jenisKelamin,
-      tempatLahir: rawTempat || 'Sanglar',
-      tanggalLahir: rawTglLahir || '2012-01-01',
-      telepon: rawTelp || '-',
-      alamat: rawAlamat || 'Kecamatan Reteh, Inhil',
+      tempatLahir: cleanText(rawTempat, 60) || 'Sanglar',
+      tanggalLahir: cleanText(rawTglLahir, 20) || '2012-01-01',
+      telepon: cleanText(rawTelp, 30) || '-',
+      alamat: cleanText(rawAlamat, 200) || 'Kecamatan Reteh, Inhil',
       tanggalBergabung: new Date().toISOString().split('T')[0],
       status: 'Aktif',
       fotoUrl: '',

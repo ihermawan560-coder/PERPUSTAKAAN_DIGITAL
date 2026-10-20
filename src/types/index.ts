@@ -5,6 +5,8 @@ export interface UserSession {
   name: string;
   role: Role;
   loginTime: string;
+  expiresAt: number; // Expiration timestamp in ms
+  sessionToken: string; // Anti-tampering token
 }
 
 export interface KelasItem {
@@ -111,6 +113,9 @@ export interface PengaturanSekolah {
   maksimalHariPinjam: number; // default 7 hari
   dendaPerHari: number; // default 1000
   maksimalBukuPinjam: number; // default 3 buku
+
+  // Administrator Security
+  adminPassword?: string; // Optional custom administrator password (defaults to 'admin')
 }
 
 export type ActiveTab = 

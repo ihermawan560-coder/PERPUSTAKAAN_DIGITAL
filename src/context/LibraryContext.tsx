@@ -136,8 +136,17 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [user, setUser] = useState<UserSession | null>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.USER);
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed: UserSession = JSON.parse(saved);
+      // Validate session expiration and role integrity
+      const now = Date.now();
+      if (!parsed.expiresAt || parsed.expiresAt < now || parsed.role !== 'admin') {
+        localStorage.removeItem(STORAGE_KEYS.USER);
+        return null;
+      }
+      return parsed;
     } catch {
+      localStorage.removeItem(STORAGE_KEYS.USER);
       return null;
     }
   });
@@ -417,12 +426,16 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Auth methods
   const login = (username: string, pass: string): boolean => {
-    if (username.trim().toLowerCase() === 'admin' && pass === 'admin') {
+    const validPassword = pengaturan.adminPassword || 'admin';
+    if (username.trim().toLowerCase() === 'admin' && pass === validPassword) {
+      const now = Date.now();
       const newSession: UserSession = {
         username: 'admin',
         name: 'Administrator Perpustakaan',
         role: 'admin',
-        loginTime: new Date().toISOString(),
+        loginTime: new Date(now).toISOString(),
+        expiresAt: now + 12 * 60 * 60 * 1000, // Valid for 12 hours
+        sessionToken: `sec_${now}_${Math.random().toString(36).substring(2, 12)}`,
       };
       setUser(newSession);
       addToast('Selamat Datang di Sistem Perpustakaan SMP Negeri 3 Reteh', 'success');
@@ -467,28 +480,39 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // CRUD Buku
   const addBuku = (data: Omit<BukuItem, 'id'>) => {
+    const total = Math.max(0, Number(data.jumlahTotal) || 0);
+    const tersedia = Math.min(total, Math.max(0, Number(data.jumlahTersedia) || 0));
     const newBuku: BukuItem = {
       ...data,
+      jumlahTotal: total,
+      jumlahTersedia: tersedia,
       id: generateId('buku'),
     };
     setBuku((prev) => [newBuku, ...prev]);
+    saveDocToFirestore(FS_COLLECTIONS.BUKU, newBuku.id, newBuku);
     addToast(`Buku "${newBuku.judul}" berhasil didaftarkan!`, 'success');
   };
 
   const updateBuku = (id: string, data: Partial<BukuItem>) => {
+    let updatedItem: BukuItem | null = null;
     setBuku((prev) =>
       prev.map((b) => {
         if (b.id === id) {
-          const updated = { ...b, ...data };
-          // ensure available does not exceed total
-          if (updated.jumlahTersedia > updated.jumlahTotal) {
-            updated.jumlahTersedia = updated.jumlahTotal;
+          const total = data.jumlahTotal !== undefined ? Math.max(0, Number(data.jumlahTotal)) : b.jumlahTotal;
+          let tersedia = data.jumlahTersedia !== undefined ? Math.max(0, Number(data.jumlahTersedia)) : b.jumlahTersedia;
+          if (tersedia > total) {
+            tersedia = total;
           }
+          const updated = { ...b, ...data, jumlahTotal: total, jumlahTersedia: tersedia };
+          updatedItem = updated;
           return updated;
         }
         return b;
       })
     );
+    if (updatedItem) {
+      saveDocToFirestore(FS_COLLECTIONS.BUKU, id, updatedItem);
+    }
     addToast('Data buku berhasil diperbarui!', 'success');
   };
 
@@ -581,6 +605,11 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     tanggalJatuhTempo: string;
     catatan?: string;
   }): boolean => {
+    if (data.tanggalJatuhTempo && data.tanggalPinjam && data.tanggalJatuhTempo < data.tanggalPinjam) {
+      addToast('Tanggal jatuh tempo tidak boleh mendahului tanggal peminjaman!', 'error');
+      return false;
+    }
+
     const targetBuku = buku.find((b) => b.id === data.bukuId);
     if (!targetBuku) {
       addToast('Buku tidak ditemukan!', 'error');
@@ -637,6 +666,10 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     tanggalJatuhTempo: string;
     catatan?: string;
   }): boolean => {
+    if (data.tanggalJatuhTempo && data.tanggalPinjam && data.tanggalJatuhTempo < data.tanggalPinjam) {
+      addToast('Tanggal jatuh tempo tidak boleh mendahului tanggal peminjaman!', 'error');
+      return false;
+    }
     if (!data.namaSiswa.trim()) {
       addToast('Nama peminjam wajib diisi!', 'error');
       return false;
@@ -850,19 +883,35 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const importDatabaseJSON = (jsonStr: string): boolean => {
     try {
+      if (!jsonStr || typeof jsonStr !== 'string') {
+        throw new Error('Berkas tidak berisi teks yang valid');
+      }
       const parsed = JSON.parse(jsonStr);
-      if (parsed.kelas && parsed.buku && parsed.anggota && parsed.transaksi) {
-        setKelas(parsed.kelas);
-        setBuku(parsed.buku);
-        setAnggota(parsed.anggota);
-        setTransaksi(parsed.transaksi);
-        if (parsed.pengaturan) setPengaturan(parsed.pengaturan);
+      if (
+        Array.isArray(parsed.kelas) &&
+        Array.isArray(parsed.buku) &&
+        Array.isArray(parsed.anggota) &&
+        Array.isArray(parsed.transaksi)
+      ) {
+        // Validate each array item minimally has an id
+        const validKelas = parsed.kelas.filter((k: any) => k && typeof k.id === 'string' && typeof k.namaKelas === 'string');
+        const validBuku = parsed.buku.filter((b: any) => b && typeof b.id === 'string' && typeof b.judul === 'string');
+        const validAnggota = parsed.anggota.filter((a: any) => a && typeof a.id === 'string' && typeof a.nama === 'string');
+        const validTransaksi = parsed.transaksi.filter((t: any) => t && typeof t.id === 'string' && typeof t.kodeTransaksi === 'string');
+
+        setKelas(validKelas);
+        setBuku(validBuku);
+        setAnggota(validAnggota);
+        setTransaksi(validTransaksi);
+        if (parsed.pengaturan && typeof parsed.pengaturan === 'object') {
+          setPengaturan((prev) => ({ ...prev, ...parsed.pengaturan }));
+        }
         addToast('Data perpustakaan berhasil dipulihkan dari file backup!', 'success');
         return true;
       }
-      throw new Error('Format file tidak sesuai skema');
-    } catch {
-      addToast('Gagal memulihkan data: Format file JSON tidak valid', 'error');
+      throw new Error('Format file tidak sesuai skema backup perpustakaan');
+    } catch (err: any) {
+      addToast(`Gagal memulihkan data: ${err?.message || 'Format file JSON tidak valid'}`, 'error');
       return false;
     }
   };

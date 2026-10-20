@@ -22,15 +22,67 @@ export const LoginView: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Brute-force rate limiting protection
+  const [failedAttempts, setFailedAttempts] = useState<number>(() => {
+    try {
+      const count = sessionStorage.getItem('smpn3_login_fails');
+      return count ? parseInt(count, 10) : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [lockoutTimer, setLockoutTimer] = useState<number>(0);
+
+  React.useEffect(() => {
+    if (lockoutTimer <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutTimer]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (lockoutTimer > 0) return;
+
+    if (failedAttempts >= 5) {
+      setLockoutTimer(30);
+      setError('Akses dikunci sementara selama 30 detik untuk mencegah percobaan tidak sah (brute-force).');
+      return;
+    }
+
     setError('');
     setIsLoading(true);
 
     setTimeout(() => {
       const ok = login(username, password);
       if (!ok) {
-        setError('Username atau password salah! Silakan periksa kembali akun Anda.');
+        const next = failedAttempts + 1;
+        setFailedAttempts(next);
+        try {
+          sessionStorage.setItem('smpn3_login_fails', next.toString());
+        } catch {
+          // ignore
+        }
+
+        if (next >= 5) {
+          setLockoutTimer(30);
+          setError('Terlalu banyak percobaan gagal! Login dikunci selama 30 detik demi keamanan sistem.');
+        } else {
+          setError(`Username atau password salah! Percobaan tersisa sebelum terkunci: ${5 - next}`);
+        }
+      } else {
+        try {
+          sessionStorage.removeItem('smpn3_login_fails');
+        } catch {
+          // ignore
+        }
       }
       setIsLoading(false);
     }, 400);
@@ -154,15 +206,17 @@ export const LoginView: React.FC = () => {
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
+                      disabled={isLoading || lockoutTimer > 0}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Masukkan password"
-                      className="w-full pl-10 pr-10 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      placeholder={lockoutTimer > 0 ? `Terkunci sementara (${lockoutTimer}s)` : 'Masukkan password'}
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-900/80 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
                     />
                     <button
                       type="button"
+                      disabled={isLoading || lockoutTimer > 0}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200 transition-colors"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -171,11 +225,13 @@ export const LoginView: React.FC = () => {
 
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || lockoutTimer > 0}
                   className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
                 >
                   {isLoading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : lockoutTimer > 0 ? (
+                    <span>Terkunci Sementara ({lockoutTimer} detik)</span>
                   ) : (
                     <>
                       <span>Masuk ke Perpustakaan</span>
