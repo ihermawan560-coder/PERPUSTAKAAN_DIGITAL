@@ -4,6 +4,7 @@ import { LoginView } from './components/auth/LoginView';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
+import { OfflineIndicator } from './components/common/OfflineIndicator';
 
 // Feature Views
 import { DashboardView } from './components/dashboard/DashboardView';
@@ -67,6 +68,9 @@ const MainLayout: React.FC = () => {
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
       {/* Toast notifications */}
       <ToastContainer />
+
+      {/* Offline connectivity indicator */}
+      <OfflineIndicator />
 
       {/* Sidebar navigation */}
       <Sidebar

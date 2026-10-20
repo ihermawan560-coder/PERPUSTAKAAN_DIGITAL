@@ -20,6 +20,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -123,6 +124,9 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Download / Install App Banner for Multi-Device Use */}
+      <PWAInstallButton variant="banner" />
 
       {/* Overdue Warning Alert Banner (if any) */}
       {overdueLoans.length > 0 && (

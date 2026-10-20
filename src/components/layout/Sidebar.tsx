@@ -17,6 +17,7 @@ import {
   Layers,
   Cloud
 } from 'lucide-react';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -237,6 +238,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Download & Install PWA Button */}
+        <div className="px-3 pt-2">
+          <PWAInstallButton variant="sidebar" />
         </div>
 
         {/* School Footer Card */}

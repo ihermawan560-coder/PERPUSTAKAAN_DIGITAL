@@ -5,10 +5,14 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+export type PlatformType = 'windows' | 'mac' | 'android' | 'ios' | 'linux' | 'other';
+
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+  const [platform, setPlatform] = useState<PlatformType>('other');
 
   useEffect(() => {
     // Detect standalone mode (already installed on device/platform)
@@ -17,10 +21,26 @@ export function usePWAInstall() {
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
     setIsInstalled(isStandalone);
 
-    // Detect iOS devices (iPhone / iPad)
+    // Detect user platform
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
+    const isAndroidDevice = /android/.test(userAgent);
     setIsIOS(isIOSDevice);
+    setIsAndroid(isAndroidDevice);
+
+    if (isIOSDevice) {
+      setPlatform('ios');
+    } else if (isAndroidDevice) {
+      setPlatform('android');
+    } else if (/win/.test(userAgent)) {
+      setPlatform('windows');
+    } else if (/mac/.test(userAgent)) {
+      setPlatform('mac');
+    } else if (/linux/.test(userAgent)) {
+      setPlatform('linux');
+    } else {
+      setPlatform('other');
+    }
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -41,22 +61,29 @@ export function usePWAInstall() {
     };
   }, []);
 
-  const install = async () => {
+  const install = async (): Promise<boolean> => {
     if (!deferredPrompt) return false;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setIsInstalled(true);
-      setDeferredPrompt(null);
-      return true;
+    try {
+      await deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setIsInstalled(true);
+        setDeferredPrompt(null);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn('PWA prompt error:', err);
+      return false;
     }
-    return false;
   };
 
   return {
     isInstallable: !!deferredPrompt,
     isInstalled,
     isIOS,
+    isAndroid,
+    platform,
     install,
   };
 }

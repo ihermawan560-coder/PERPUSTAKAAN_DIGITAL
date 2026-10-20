@@ -24,7 +24,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
     setActiveTab,
     cloudSyncStatus,
     lastCloudSync,
-    triggerManualCloudSync
+    triggerManualCloudSync,
+    refreshDataFromCloud
   } = useLibrary();
 
   const overdueCount = transaksi.filter((t) => t.status === 'Terlambat').length;
@@ -74,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Cloud Auto-Sync Status Badge */}
           <button
-            onClick={triggerManualCloudSync}
+            onClick={() => refreshDataFromCloud(true)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
               cloudSyncStatus === 'syncing'
                 ? 'bg-blue-50 border-blue-200 text-blue-700'

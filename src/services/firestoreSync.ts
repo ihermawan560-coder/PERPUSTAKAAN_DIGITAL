@@ -9,7 +9,7 @@ import {
   onSnapshot,
   writeBatch,
   getDocFromServer,
-  enableIndexedDbPersistence
+  deleteDoc
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { AnggotaItem, BukuItem, KelasItem, PengaturanSekolah, TransaksiItem } from '../types';
@@ -126,8 +126,31 @@ export async function saveDocToFirestore(collectionName: string, id: string, dat
       ...data,
       updatedAt: new Date().toISOString()
     }, { merge: true });
+    // Lightly ping sync metadata so all active devices get instant update
+    notifySyncMetadata();
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${collectionName}/${id}`);
+  }
+}
+
+// Delete single document from Firestore
+export async function deleteDocFromFirestore(collectionName: string, id: string) {
+  try {
+    await deleteDoc(doc(db, collectionName, id));
+    notifySyncMetadata();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${collectionName}/${id}`);
+  }
+}
+
+// Notify other connected devices / tabs that data was updated
+export async function notifySyncMetadata() {
+  try {
+    await setDoc(doc(db, FS_COLLECTIONS.SYNC_META, 'current_state'), {
+      lastSyncedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch {
+    // Non-blocking
   }
 }
 

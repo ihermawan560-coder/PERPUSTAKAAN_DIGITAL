@@ -19,6 +19,7 @@ import { generateId, generateTrxCode, hitungHariTerlambat } from '../utils/forma
 import {
   fetchAllDataFromFirestore,
   saveDocToFirestore,
+  deleteDocFromFirestore,
   syncAllDataToFirestore,
   subscribeToFirestoreSync,
   FS_COLLECTIONS,
@@ -53,6 +54,7 @@ interface LibraryContextType {
   cloudSyncStatus: 'synced' | 'syncing' | 'offline' | 'error';
   lastCloudSync: string | null;
   triggerManualCloudSync: () => Promise<void>;
+  refreshDataFromCloud: (notifyUser?: boolean) => Promise<boolean>;
 
   // CRUD Kelas
   addKelas: (data: Omit<KelasItem, 'id'>) => void;
@@ -276,50 +278,95 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'error'>('syncing');
   const [lastCloudSync, setLastCloudSync] = useState<string | null>(null);
 
-  // Auto-sync from Cloud Firestore whenever the application is opened
+  // Auto-sync & Auto-update from Cloud Firestore whenever the application is opened
+  const refreshDataFromCloud = async (notifyUser = false): Promise<boolean> => {
+    setCloudSyncStatus('syncing');
+    try {
+      const remote = await fetchAllDataFromFirestore();
+      if (remote) {
+        const hasRemoteData =
+          (remote.buku && remote.buku.length > 0) ||
+          (remote.anggota && remote.anggota.length > 0) ||
+          (remote.transaksi && remote.transaksi.length > 0) ||
+          (remote.kelas && remote.kelas.length > 0);
+
+        if (hasRemoteData) {
+          if (remote.kelas && remote.kelas.length > 0) setKelas(remote.kelas);
+          if (remote.buku && remote.buku.length > 0) setBuku(remote.buku);
+          if (remote.anggota) setAnggota(remote.anggota);
+          if (remote.transaksi) setTransaksi(remote.transaksi);
+          if (remote.pengaturan) setPengaturan(remote.pengaturan);
+        } else {
+          // First time seed
+          await syncAllDataToFirestore({
+            buku,
+            anggota,
+            kelas,
+            transaksi,
+            pengaturan,
+          });
+        }
+        setCloudSyncStatus('synced');
+        const timeNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        setLastCloudSync(timeNow);
+        if (notifyUser) {
+          addToast('Data perpustakaan berhasil diperbarui dari Cloud!', 'success');
+        }
+        return true;
+      } else {
+        setCloudSyncStatus('offline');
+        if (notifyUser) {
+          addToast('Tidak dapat terhubung ke Cloud. Menggunakan data lokal perangkat.', 'info');
+        }
+        return false;
+      }
+    } catch (err) {
+      console.warn('Auto cloud sync notice:', err);
+      setCloudSyncStatus('offline');
+      if (notifyUser) {
+        addToast('Gagal menyinkronkan data cloud.', 'error');
+      }
+      return false;
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
-    const initCloudData = async () => {
-      setCloudSyncStatus('syncing');
-      try {
-        const remote = await fetchAllDataFromFirestore();
-        if (!isMounted) return;
+    let lastAutoSync = 0;
 
-        if (remote) {
-          const hasRemoteData =
-            (remote.buku && remote.buku.length > 0) ||
-            (remote.anggota && remote.anggota.length > 0) ||
-            (remote.transaksi && remote.transaksi.length > 0) ||
-            (remote.kelas && remote.kelas.length > 0);
-
-          if (hasRemoteData) {
-            if (remote.kelas && remote.kelas.length > 0) setKelas(remote.kelas);
-            if (remote.buku && remote.buku.length > 0) setBuku(remote.buku);
-            if (remote.anggota) setAnggota(remote.anggota);
-            if (remote.transaksi) setTransaksi(remote.transaksi);
-            if (remote.pengaturan) setPengaturan(remote.pengaturan);
-          } else {
-            // First time cloud initialization: seed current local state up to Firestore
-            await syncAllDataToFirestore({
-              buku,
-              anggota,
-              kelas,
-              transaksi,
-              pengaturan,
-            });
-          }
-          setCloudSyncStatus('synced');
-          setLastCloudSync(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-        } else {
-          setCloudSyncStatus('offline');
-        }
-      } catch (err) {
-        console.warn('Auto cloud sync notice:', err);
-        if (isMounted) setCloudSyncStatus('offline');
+    const triggerAutoSync = () => {
+      const now = Date.now();
+      // Throttle rapid re-triggers within 4 seconds
+      if (now - lastAutoSync < 4000) return;
+      lastAutoSync = now;
+      if (isMounted) {
+        refreshDataFromCloud(false);
       }
     };
 
-    initCloudData();
+    // 1. Initial mount: whenever the application is opened
+    triggerAutoSync();
+
+    // 2. Whenever user resumes / re-opens the app on Laptop or Smartphone
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        triggerAutoSync();
+      }
+    };
+
+    // 3. Whenever window / PWA gains focus (returning from another window or app)
+    const handleFocus = () => {
+      triggerAutoSync();
+    };
+
+    // 4. Whenever internet reconnects
+    const handleOnline = () => {
+      triggerAutoSync();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleOnline);
 
     // Live subscription across devices / platforms
     const unsub = subscribeToFirestoreSync(async (updated) => {
@@ -338,6 +385,9 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     return () => {
       isMounted = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleOnline);
       unsub();
     };
   }, []);
@@ -458,11 +508,21 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: generateId('k'),
     };
     setKelas((prev) => [...prev, newK]);
+    saveDocToFirestore(FS_COLLECTIONS.KELAS, newK.id, newK);
     addToast(`Kelas ${newK.namaKelas} berhasil ditambahkan!`, 'success');
   };
 
   const updateKelas = (id: string, data: Partial<KelasItem>) => {
-    setKelas((prev) => prev.map((k) => (k.id === id ? { ...k, ...data } : k)));
+    setKelas((prev) =>
+      prev.map((k) => {
+        if (k.id === id) {
+          const updated = { ...k, ...data };
+          saveDocToFirestore(FS_COLLECTIONS.KELAS, id, updated);
+          return updated;
+        }
+        return k;
+      })
+    );
     addToast('Data kelas berhasil diperbarui!', 'success');
   };
 
@@ -474,6 +534,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { success: false, message: 'Masih ada anggota terhubung ke kelas ini.' };
     }
     setKelas((prev) => prev.filter((k) => k.id !== id));
+    deleteDocFromFirestore(FS_COLLECTIONS.KELAS, id);
     addToast('Kelas berhasil dihapus.', 'info');
     return { success: true };
   };
@@ -524,6 +585,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { success: false, message: 'Buku masih dalam masa peminjaman aktif.' };
     }
     setBuku((prev) => prev.filter((b) => b.id !== id));
+    deleteDocFromFirestore(FS_COLLECTIONS.BUKU, id);
     addToast('Data buku berhasil dihapus.', 'info');
     return { success: true };
   };
@@ -535,6 +597,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: generateId('ang'),
     };
     setAnggota((prev) => [newAnggota, ...prev]);
+    saveDocToFirestore(FS_COLLECTIONS.ANGGOTA, newAnggota.id, newAnggota);
     addToast(`Anggota "${newAnggota.nama}" berhasil didaftarkan!`, 'success');
   };
 
@@ -545,11 +608,23 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: generateId(`ang_${Date.now()}_${index}`),
     }));
     setAnggota((prev) => [...newItems, ...prev]);
+    newItems.forEach((item) => {
+      saveDocToFirestore(FS_COLLECTIONS.ANGGOTA, item.id, item);
+    });
     addToast(`Berhasil menambahkan ${newItems.length} data siswa ke dalam sistem!`, 'success');
   };
 
   const updateAnggota = (id: string, data: Partial<AnggotaItem>) => {
-    setAnggota((prev) => prev.map((a) => (a.id === id ? { ...a, ...data } : a)));
+    setAnggota((prev) =>
+      prev.map((a) => {
+        if (a.id === id) {
+          const updated = { ...a, ...data };
+          saveDocToFirestore(FS_COLLECTIONS.ANGGOTA, id, updated);
+          return updated;
+        }
+        return a;
+      })
+    );
     addToast('Data anggota berhasil diperbarui!', 'success');
   };
 
@@ -557,7 +632,14 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!ids || ids.length === 0 || !newKelasId) return;
     const targetK = getKelasById(newKelasId);
     setAnggota((prev) =>
-      prev.map((a) => (ids.includes(a.id) ? { ...a, kelasId: newKelasId } : a))
+      prev.map((a) => {
+        if (ids.includes(a.id)) {
+          const updated = { ...a, kelasId: newKelasId };
+          saveDocToFirestore(FS_COLLECTIONS.ANGGOTA, a.id, updated);
+          return updated;
+        }
+        return a;
+      })
     );
     const targetName = targetK ? `Kelas ${targetK.namaKelas}` : 'kelas tujuan';
     addToast(`Berhasil memindahkan ${ids.length} anggota ke ${targetName}!`, 'success');
@@ -570,6 +652,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { success: false, message: 'Anggota memiliki buku yang belum dikembalikan.' };
     }
     setAnggota((prev) => prev.filter((a) => a.id !== id));
+    deleteDocFromFirestore(FS_COLLECTIONS.ANGGOTA, id);
     addToast('Data anggota berhasil dihapus.', 'info');
     return { success: true };
   };
@@ -798,27 +881,42 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
     }
 
+    const currentBook = buku.find((b) => b.id === targetTrx.bukuId);
+    if (currentBook) {
+      const newTersedia = data.kondisiBuku !== 'Hilang' ? Math.min(currentBook.jumlahTotal, currentBook.jumlahTersedia + 1) : currentBook.jumlahTersedia;
+      const newTotal = data.kondisiBuku === 'Hilang' ? Math.max(0, currentBook.jumlahTotal - 1) : currentBook.jumlahTotal;
+      saveDocToFirestore(FS_COLLECTIONS.BUKU, targetTrx.bukuId, { ...currentBook, jumlahTersedia: newTersedia, jumlahTotal: newTotal });
+    }
+
+    const updatedTrx: TransaksiItem = {
+      ...targetTrx,
+      status: 'Dikembalikan',
+      tanggalKembali: data.tanggalKembali,
+      kondisiBukuSaatKembali: data.kondisiBuku,
+      denda,
+      statusDenda: finalStatusDenda,
+      catatan: data.catatan ? `${targetTrx.catatan ? targetTrx.catatan + ' | ' : ''}${data.catatan}` : targetTrx.catatan,
+    };
+
     setTransaksi((prev) =>
-      prev.map((t) =>
-        t.id === data.transaksiId
-          ? {
-              ...t,
-              status: 'Dikembalikan',
-              tanggalKembali: data.tanggalKembali,
-              kondisiBukuSaatKembali: data.kondisiBuku,
-              denda,
-              statusDenda: finalStatusDenda,
-              catatan: data.catatan ? `${t.catatan ? t.catatan + ' | ' : ''}${data.catatan}` : t.catatan,
-            }
-          : t
-      )
+      prev.map((t) => (t.id === data.transaksiId ? updatedTrx : t))
     );
+    saveDocToFirestore(FS_COLLECTIONS.TRANSAKSI, data.transaksiId, updatedTrx);
 
     addToast(`Pengembalian buku berhasil diproses!`, 'success');
   };
 
   const updateTransaksi = (id: string, data: Partial<TransaksiItem>) => {
-    setTransaksi((prev) => prev.map((t) => (t.id === id ? { ...t, ...data } : t)));
+    setTransaksi((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          const updated = { ...t, ...data };
+          saveDocToFirestore(FS_COLLECTIONS.TRANSAKSI, id, updated);
+          return updated;
+        }
+        return t;
+      })
+    );
     addToast('Data transaksi berhasil diperbarui!', 'success');
   };
 
@@ -835,12 +933,17 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
     }
     setTransaksi((prev) => prev.filter((t) => t.id !== id));
+    deleteDocFromFirestore(FS_COLLECTIONS.TRANSAKSI, id);
     addToast('Transaksi berhasil dihapus!', 'info');
   };
 
   // Pengaturan
   const updatePengaturan = (data: Partial<PengaturanSekolah>) => {
-    setPengaturan((prev) => ({ ...prev, ...data }));
+    setPengaturan((prev) => {
+      const updated = { ...prev, ...data };
+      saveDocToFirestore(FS_COLLECTIONS.PENGATURAN, 'sekolah_default', updated);
+      return updated;
+    });
     addToast('Pengaturan perpustakaan berhasil disimpan!', 'success');
   };
 
@@ -969,6 +1072,7 @@ export const LibraryProvider: React.FC<{ children: React.ReactNode }> = ({ child
         cloudSyncStatus,
         lastCloudSync,
         triggerManualCloudSync,
+        refreshDataFromCloud,
         kembalikanBuku,
         updateTransaksi,
         deleteTransaksi,
